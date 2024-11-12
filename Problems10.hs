@@ -300,15 +300,6 @@ smallStep (x,y) =
           Nothing -> if isValue ex then Just (ex,y) else Nothing
           Just (r,z)    -> Just ((Catch r var err),z)
 
-n :: (Expr, Expr)
-n =(App (Lam "f" (Catch (App (Var "f") (Const 2)) "f" (App (Var "f") (Const 1)))) (Throw (Lam "y" (Plus (Var "y") (Const 1)))),Const 12)
-s= (Throw (Lam "y" (Plus (Var "y") (Const 1))),Const 12)
-
-
-t =(App (Lam "f" (Catch (App (Var "f") (Const 2)) "f" (App (Var "f") (Const 1)))) (Throw (Lam "y" (Plus (Var "y") (Const 1)))),Const 12)
-r= (Catch (App (Throw (Lam "y" (Plus (Var "y") (Const 1)))) (Const 2)) "f" (App (Var "f") (Const 1)),Const 12)
-
-m = (Catch (Const 3) "f" (App (Var "f") (Const 1)),Const 12)
 
 steps :: (Expr, Expr) -> [(Expr, Expr)]
 steps s = case smallStep s of
