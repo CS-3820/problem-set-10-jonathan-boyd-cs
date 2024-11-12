@@ -43,7 +43,42 @@ data Expr = -- Arithmetic
   deriving Eq          
 
 deriving instance Show Expr
-
+{-
+tryCatch :: Expr -> (Either Expr Expr)
+tryCatch (Throw (Const i)) = (Left (Const i))
+tryCatch (Throw (Lam x y)) = (Left (Lam x y))
+tryCatch (Throw x)         = 
+  case (tryCatch x) of 
+    Left x -> Left x
+    Right x -> Left x
+tryCatch (Const i) = (Right (Const i))
+tryCatch (Lam x y) = (Right (Lam x y))
+tryCatch (Plus x y) =
+  case tryCatch x of 
+    Left z -> Left z
+    Right (Const z) -> 
+      case tryCatch y of
+        Left s -> Left s
+        Right (Const t) -> Right (Const (z + t)) 
+        Right s -> Left s
+    Right z -> Left z
+tryCatch (Var x) = Right (Var x)
+tryCatch (App x y) = 
+  case tryCatch x of
+    Left z -> Left z
+    Right (Lam var ex) -> 
+      tryCatch (subst var y ex)
+tryCatch (Store x) = 
+  case tryCatch x of 
+    Left z -> Left z
+    Right z -> Right z
+tryCatch (Catch ex var err) =
+  case tryCatch ex of 
+    Left z -> case tryCatch (subst var z err) of 
+                Left s -> Left s
+                Right t -> Left t
+    Right z -> Right z
+tryCatch Recall = Left (Recall) -}
 -- Here's a show instance that tries to be a little more readable than the
 -- default Haskell one; feel free to uncomment it (but then, be sure to comment
 -- out the `deriving instance` line above).
@@ -108,8 +143,11 @@ subst x m (Var y)
   | otherwise = Var y
 subst x m (Lam y n) = Lam y (substUnder x m y n)
 subst x m (App n1 n2) = App (subst x m n1) (subst x m n2)
-subst x m n = undefined
-
+subst x m (Store y) = Store (subst x m y)
+subst x m (Throw y) = Throw (subst x m y)
+subst x m (Catch ex var err) = Catch (subst x m ex) 
+                                var (substUnder x m var err)
+subst x m Recall = Recall
 {-------------------------------------------------------------------------------
 
 Problems 3 - 10: Small-step semantics
@@ -202,7 +240,75 @@ bubble; this won't *just* be `Throw` and `Catch.
 -------------------------------------------------------------------------------}
 
 smallStep :: (Expr, Expr) -> Maybe (Expr, Expr)
-smallStep = undefined
+smallStep (x,y) = 
+  case x of 
+    (Const i) -> Nothing
+    (Lam s t) -> Nothing
+    (Var s)   -> Nothing
+    (Recall)  -> Just (y,y)
+    (Store s) -> if isValue s then Just (s,s) else
+      case s of
+        Throw x -> case smallStep (x,y) of
+          Nothing -> Just (Throw x,y) 
+          Just (r,t) -> Just ( Store (Throw r), t)          
+        _ -> 
+          case smallStep (s,y) of
+            Nothing -> Nothing
+            Just (r,t) ->  Just (Store r, t)
+    (Plus s t) -> 
+      case (s,t) of
+        ((Const i), (Const j)) -> Just ((Const (i+j)),y)
+        ((Throw w), _) -> Just (Throw w,y)
+        _ ->
+          case smallStep (s,y) of
+            Just (r, z) -> Just (Plus r t ,z)
+            Nothing     -> 
+              case smallStep (t,y) of 
+                Just (r,z) -> Just (Plus s r,z)
+                Nothing -> case t of 
+                  Throw x -> Just (Throw x ,y)
+                  _ ->Nothing 
+    (App s r) ->
+      case (s) of
+        (Throw x) -> Just (Throw x ,y)
+        _-> 
+          case smallStep (s,y) of
+            Just (q,t) -> Just ((App q r), t)
+            Nothing -> 
+              case  (r) of 
+                (Throw x) -> Just (Throw x,y)
+                _ ->
+                  case smallStep (r,y) of
+                  Just (q,t) -> Just ((App s q),t)
+                  Nothing -> case s of 
+                    Lam x t -> Just ((subst x r t),y)
+                    _   -> Nothing
+    (Throw s) ->
+      if isValue s 
+        then Nothing
+      else 
+        case (s) of
+          Throw x -> Just (Throw x , y)
+          _ ->
+            case smallStep (s,y) of
+              Nothing -> Nothing
+              Just (r,t) -> Just (Throw r,t)
+    (Catch ex var err) -> case ex of
+      Throw w -> Just ((subst var w err),y)
+      _ ->
+        case smallStep (ex,y) of
+          Nothing -> if isValue ex then Just (ex,y) else Nothing
+          Just (r,z)    -> Just ((Catch r var err),z)
+
+n :: (Expr, Expr)
+n =(App (Lam "f" (Catch (App (Var "f") (Const 2)) "f" (App (Var "f") (Const 1)))) (Throw (Lam "y" (Plus (Var "y") (Const 1)))),Const 12)
+s= (Throw (Lam "y" (Plus (Var "y") (Const 1))),Const 12)
+
+
+t =(App (Lam "f" (Catch (App (Var "f") (Const 2)) "f" (App (Var "f") (Const 1)))) (Throw (Lam "y" (Plus (Var "y") (Const 1)))),Const 12)
+r= (Catch (App (Throw (Lam "y" (Plus (Var "y") (Const 1)))) (Const 2)) "f" (App (Var "f") (Const 1)),Const 12)
+
+m = (Catch (Const 3) "f" (App (Var "f") (Const 1)),Const 12)
 
 steps :: (Expr, Expr) -> [(Expr, Expr)]
 steps s = case smallStep s of
